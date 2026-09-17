@@ -1,13 +1,17 @@
-from PyQt6.QtCore import QRect, QPoint, QEvent, pyqtSignal, QTimer
-from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow, QPushButton, QLabel
+from tkinter import dialog
+
+from PyQt6.QtCore import QRect, QPoint, QEvent, pyqtSignal, QTimer, QSize
+from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow, QPushButton, QLabel, QSlider, QDialog, QSpacerItem, QTextEdit
 
 from PyQt6 import QtCore
 from PyQt6 import QtGui
+
 from PyQt6.QtGui import QPainter, QPaintDevice, QColor, QKeyEvent, QKeySequence
-from PyQt6.QtWidgets import QVBoxLayout
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout
 
 import random
 from enum import Enum
+import json
 
 from collections import deque
 import sys, time
@@ -52,9 +56,9 @@ class Point:
         return f'Point: [{self.x},{self.y}]'
 
     def __add__(self, other):
-        if other.__class__ == Point:
+        if isinstance(other, Point):
             return Point(self.x + other.x, self.y + other.y)
-        elif other.__class__ == int:
+        elif isinstance(other, int):
             return Point(self.x + other, self.y + other)
         else:
             raise TypeError
@@ -80,23 +84,21 @@ class Point:
 
 
 class Direction(Enum):
-    UP = 1,
-    DOWN = 2,
-    LEFT = 3,
+    UP = 1
+    DOWN = 2
+    LEFT = 3
     RIGHT = 4
 
-
-def get_opposite(direction):
-    match direction:
-        case Direction.RIGHT:
-            return Direction.LEFT
-        case Direction.LEFT:
-            return Direction.RIGHT
-        case Direction.UP:
-            return Direction.DOWN
-        case Direction.DOWN:
-            return Direction.UP
-    return None
+    def get_opposite(self) -> Direction:
+        match self:
+            case Direction.RIGHT:
+                return Direction.LEFT
+            case Direction.LEFT:
+                return Direction.RIGHT
+            case Direction.UP:
+                return Direction.DOWN
+            case Direction.DOWN:
+                return Direction.UP
 
 
 class SnakePiece:
@@ -212,10 +214,9 @@ class Snake:
     def apply_direction(self):
         is_applied = False
         while is_applied == False and len(self.direction_queue) > 0:
-#            print(self.direction_queue)
             curr_dir = self.direction_queue.popleft()
             if self.head.prev is not None:
-                if get_opposite(self.head.direction) != curr_dir:
+                if self.head.direction.get_opposite() != curr_dir:
                     self.head.set_direction(curr_dir)
                     is_applied = True
                 else:
@@ -276,7 +277,7 @@ class SnakeFood:
 
         #timer init
         self.blinker = QTimer()
-        self.blinker.setInterval(750)  # 750ms
+        self.blinker.setInterval(500)  # 500ms
         self.blinker.timeout.connect(self.blink)
         self.blinker.start()
 
@@ -336,10 +337,53 @@ class MyQWidget(QWidget):
             self.keyPressed.emit(direction)
 
 
+class GameOverDialog(QDialog):
+    def __init__(self, score: int, score_board: list, place: int, parent: QWidget|None = ..., ):
+        super().__init__(parent)
+        self.setWindowTitle('GAME OVER!')
+        self.score = score
+        self.scoreLabel = QLabel(f'Your score is: {score}')
+        self.scoreLabel.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        self.nameField = QTextEdit()
+        self.nameField.setMaximumHeight(30)
+        self.submit_button = QPushButton('Submit')
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.scoreLabel)
+        layout.addSpacerItem(QSpacerItem(200, 10))
+        layout.addWidget(QLabel('SCORE TABLE:'))
+        self.score_board = score_board
+        self.place = place
+        for i, (key, value) in enumerate(score_board):
+            if i != place:
+                label = QLabel(f'#{i + 1}. {key}: {value}')
+                label.setMaximumHeight(30)
+                layout.addWidget(label)
+            else:
+                winner_place_layout = QHBoxLayout()
+                label_with_place = QLabel(f'#{i + 1}')
+                label_with_place.setMaximumHeight(30)
+                winner_place_layout.addWidget(label_with_place)
+                winner_place_layout.addWidget(self.nameField)
+                winner_place_layout.addWidget(self.submit_button)
+                layout.addLayout(winner_place_layout)
+
+        self.setLayout(layout)
+        self.submit_button.clicked.connect(self.submit_record)
+
+    def submit_record(self):
+        name = self.nameField.toPlainText()
+        self.score_board[self.place] = (name, self.score)
+        print(self.score_board)
+        self.close()
+
+
 # Subclass QMainWindow to customize application's main window
 class MainWindow(QMainWindow):
     playground_size_x = 500
     playground_size_y = 500
+    score_board_file_path = 'score_board.txt'
 
     def __init__(self):
         super().__init__()
@@ -354,25 +398,57 @@ class MainWindow(QMainWindow):
         self.button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.button.setText("Start new game!")
 
+        self.game_speed = 800
+        self.speed_control_slider = QSlider(QtCore.Qt.Orientation.Horizontal, None)
+        self.speed_control_slider.setRange(500, 950)
+        self.speed_control_slider.setValue(self.game_speed)
+        self.speed_control_slider.valueChanged.connect(self.update_speed_of_the_snake)
+        self.speed_control_slider.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+
+        self.score = 0
+        self.score_label = QLabel()
+        self.show_score()
+
         self.playground = PlayGround(MainWindow.playground_size_x, MainWindow.playground_size_y)  #QLabel()
 
         layout = QVBoxLayout()
+        control_layout = QVBoxLayout()
+        control_layout.addWidget(self.speed_control_slider)
         layout.addWidget(self.button)
+        layout.addWidget(self.score_label)
+        layout.addLayout(control_layout)
         layout.addWidget(self.playground)
         #        layout.addSpacerItem()
         self.main_widget.setLayout(layout)
 
         self.button.clicked.connect(self.start_new_game)
         self.main_widget.keyPressed.connect(self.direction_changed)
-        self.score = 0
+
         self.size = 25
 
         self.timer = QTimer()
-        self.timer.setInterval(200)
+        self.set_timer_period()
         self.timer.timeout.connect(self.run)
 
         self.snake = None
         self.food = None
+
+        self.score_board = []
+        try:
+            with open(MainWindow.score_board_file_path, 'r', encoding='utf-8') as f:
+                try:
+                    self.score_board = json.load(f)
+                    print(self.score_board)
+                except Exception as e:
+                    print(f'Exception happened while reading {MainWindow.score_board_file_path} file: {e}')
+        except FileNotFoundError:
+            print(f'Creating a new {MainWindow.score_board_file_path} as it did not exist')
+            with open(MainWindow.score_board_file_path, 'x') as f:
+                ...
+
+
+    def set_timer_period(self):
+        self.timer.setInterval(1000 - self.game_speed)
 
     def direction_changed(self, direction):
         if self.snake is not None:
@@ -385,13 +461,22 @@ class MainWindow(QMainWindow):
                 is_food, is_collision, is_out_of_border = self.snake.move(self.playground, self.food.get_location())
                 if is_collision or is_out_of_border:
                     self.timer.stop()
+                    is_record, place = self.handle_score_within_score_table()
+                    if is_record:
+                        game_over_dialog = GameOverDialog(self.score, self.score_board, place, self)
+                        game_over_dialog.exec()
                     print(f'Total score: {self.score}')
                 elif is_food:
                     self.food.place_food(self.snake.get_all_pieces())
-                    self.score += 1
+                    self.score += self.game_speed
+                    self.show_score()
                 self.playground.refresh()
         except Exception as e:
             print('exception happened', e)
+
+    def update_speed_of_the_snake(self, val):
+        self.game_speed = val
+        self.set_timer_period()
 
     def start_new_game(self):
         self.playground.clear()
@@ -403,14 +488,41 @@ class MainWindow(QMainWindow):
         print(f'Starting point: {x0, y0}')
         print(self.playground.geometry().topLeft())
 
-        #print(sys.getrefcount(self.snake))
-        #print(sys.getrefcount(self.food))
-        self.snake = None
-        self.food = None
-
         self.snake = Snake(x0, y0, self.size, 1)
         self.food = SnakeFood(self.size, self.playground, self.snake.get_all_pieces())
         self.timer.start()
+        self.show_score()
+
+    def show_score(self):
+        #let's calculate the score as points * speed
+        self.score_label.setText(f'Your Score: {self.score}')
+
+    def handle_score_within_score_table(self):
+        self.score_board = sorted(self.score_board, key=lambda item:item[1], reverse=True)
+        is_new_record = False
+        is_already_existing_record = False
+        place = 0
+
+        if self.score > 0:
+            for i, (name, value) in enumerate(self.score_board.copy()):
+                if value < self.score:
+                    print(f'Beaten record! #{i + 1} place')
+                    self.score_board[i] = (None, self.score)
+                    is_new_record = True
+                    place = i
+                    break
+                elif value == self.score:
+                    is_already_existing_record = True
+
+
+            if len(self.score_board) < 3 and is_new_record is False and is_already_existing_record is False: # only 3 record places are stored (gold, silver, bronze)
+                self.score_board.append((None, self.score))
+                place = len(self.score_board) - 1
+                print(f'New record! #{place + 1} place')
+                is_new_record = True
+
+        print(self.score_board)
+        return is_new_record, place
 
     # currently not used
     def mousePressEvent(self, e):
@@ -430,6 +542,9 @@ class MainWindow(QMainWindow):
         print('del called')
         self.timer.stop()
         del self.food
+        print('saving score board')
+        with open(MainWindow.score_board_file_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(self.score_board))
 
 
 if __name__ == '__main__':
