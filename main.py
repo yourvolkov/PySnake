@@ -15,42 +15,13 @@ import json
 
 from collections import deque
 import sys, time
+from dataclasses import dataclass
 
-
+@dataclass(order=True, frozen=True)
 class Point:
-    def __init__(self, x=0, y=0):
-        self.x = x
-        self.y = y
-
-    def __eq__(self, value: object, /) -> bool:
-        if self.x == value.x and self.y == value.y:
-            return True
-        else:
-            return False
-
-    def __le__(self, other):
-        if self.x <= other.x or self.y <= other.y:
-            return True
-        else:
-            return False
-
-    def __ge__(self, other):
-        if self.x >= other.x or self.y >= other.y:
-            return True
-        else:
-            return False
-
-    def __lt__(self, other):
-        if self.x < other.x or self.y < other.y:
-            return True
-        else:
-            return False
-
-    def __gt__(self, other):
-        if self.x > other.x or self.y > other.y:
-            return True
-        else:
-            return False
+    """Class for operating with 2-dimensional points on the playground"""
+    x: int = 0
+    y: int = 0
 
     def __str__(self) -> str:
         return f'Point: [{self.x},{self.y}]'
@@ -66,22 +37,15 @@ class Point:
     def get(self):
         return self.x, self.y
 
-    def set(self, x, y):
-        self.x = x
-        self.y = y
+    def is_at_least_one_coordinate_smaller_than(self, other: Point):
+        if self.x < other.x or self.y < other.y:
+            return True
+        return False
 
-    def set_x(self, x):
-        self.x = x
-
-    def set_y(self, y):
-        self.y = y
-
-    def get_x(self):
-        return self.x
-
-    def get_y(self):
-        return self.y
-
+    def is_at_least_one_coordinate_greater_than(self, other: Point):
+        if self.x > other.x or self.y > other.y:
+            return True
+        return False
 
 class Direction(Enum):
     UP = 1
@@ -260,7 +224,9 @@ class PlayGround(QLabel):
         return self.canvas.size().width(), self.canvas.size().height()
 
     def is_point_within_playground(self, point: Point):
-        if point < Point(0, 0) or point > Point(*self.get_size()):
+        print(point)
+        if (point.is_at_least_one_coordinate_smaller_than(Point(0, 0)) or
+                point.is_at_least_one_coordinate_greater_than(Point(*self.get_size()))):
             return False
         else:
             return True
@@ -300,10 +266,10 @@ class SnakeFood:
     def place_food(self, all_snake_pieces):
         playground_size = self.playground.get_size()
         is_placed = False
-        new_location = Point()
+        new_location = None
         while not is_placed:
-            new_location.set(random.randrange(0, playground_size[0], self.size),
-                             random.randrange(0, playground_size[1], self.size))
+            new_location = Point(random.randrange(0, playground_size[0], self.size),
+                                    random.randrange(0, playground_size[1], self.size))
             if new_location not in all_snake_pieces:
                 self.coordinates = new_location
                 is_placed = True
