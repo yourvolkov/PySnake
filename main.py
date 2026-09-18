@@ -224,7 +224,6 @@ class PlayGround(QLabel):
         return self.canvas.size().width(), self.canvas.size().height()
 
     def is_point_within_playground(self, point: Point):
-        print(point)
         if (point.is_at_least_one_coordinate_smaller_than(Point(0, 0)) or
                 point.is_at_least_one_coordinate_greater_than(Point(*self.get_size()))):
             return False
